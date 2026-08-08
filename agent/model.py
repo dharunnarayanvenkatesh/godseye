@@ -633,6 +633,7 @@ class OpenAICompatibleModel:
     extra_headers: dict[str, str] = field(default_factory=dict)
     first_byte_timeout: float = 10
     strict_tools: bool = True
+    max_output_tokens: int = 32768
     tool_defs: list[dict[str, Any]] | None = None
     on_content_delta: Callable[[str, str], None] | None = None
 
@@ -668,6 +669,10 @@ class OpenAICompatibleModel:
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+
+        if self.max_output_tokens > 0:
+            token_field = "max_completion_tokens" if is_reasoning else "max_tokens"
+            payload[token_field] = self.max_output_tokens
 
         if conversation.stop_sequences:
             payload["stop"] = conversation.stop_sequences

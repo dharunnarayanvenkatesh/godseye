@@ -79,6 +79,7 @@ class ProviderSpec:
             "base_url": base_url,
             "reasoning_effort": effort,
             "strict_tools": self.strict_tools,
+            "max_output_tokens": config.max_output_tokens if self.name == "deepseek" else 0,
         }
         if self.first_byte_timeout is not None:
             kwargs["first_byte_timeout"] = self.first_byte_timeout
@@ -109,7 +110,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         "cerebras_api_key", "cerebras_base_url",
     ),
     "deepseek": ProviderSpec(
-        "deepseek", re.compile(r"^deepseek-(chat|reasoner)", re.IGNORECASE),
+        "deepseek", re.compile(r"^deepseek-(v4-(flash|pro)|chat|reasoner)", re.IGNORECASE),
         "deepseek_api_key", "deepseek_base_url", strict_tools=False,
     ),
     "openai": ProviderSpec(
@@ -147,4 +148,3 @@ def infer_provider_for_model(model: str) -> str | None:
         if spec.model_pattern is not None and spec.model_pattern.search(model):
             return name
     return None
-

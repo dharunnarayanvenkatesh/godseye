@@ -265,6 +265,8 @@ pub async fn solve(
     ];
 
     let max_steps = config.max_steps_per_call as usize;
+    let mut tool_calls_total = 0usize;
+    let mut tool_errors_total = 0usize;
 
     // 3. Background curator channel
     let (curator_tx, mut curator_rx) = mpsc::unbounded_channel::<CuratorOutcome>();
@@ -288,16 +290,41 @@ pub async fn solve(
         compact_messages(&mut messages, 100_000);
 
         // Call model with streaming
-        let turn = match model
-            .chat_stream(&messages, &tool_defs, &|delta| emitter.emit_delta(delta), &cancel)
-            .await
-        {
-            Ok(t) => t,
-            Err(e) => {
-                let msg = e.to_string();
+        let mut turn_result = None;
+        let mut last_error = None;
+        for attempt in 1..=3u64 {
+            match model
+                .chat_stream(&messages, &tool_defs, &|delta| emitter.emit_delta(delta), &cancel)
+                .await
+            {
+                Ok(turn) => {
+                    turn_result = Some(turn);
+                    break;
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if message == "Cancelled" || cancel.is_cancelled() {
+                        last_error = Some(message);
+                        break;
+                    }
+                    last_error = Some(message.clone());
+                    if attempt < 3 {
+                        let delay_ms = 500 * 2u64.pow((attempt - 1) as u32);
+                        emitter.emit_trace(&format!(
+                            "Model call failed ({attempt}/3): {message}; retrying in {delay_ms}ms"
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    }
+                }
+            }
+        }
+        let turn = match turn_result {
+            Some(turn) => turn,
+            None => {
+                let msg = last_error.unwrap_or_else(|| "Model call failed".into());
                 tools.cleanup();
                 abort_curators(&mut curator_handles);
-                if msg == "Cancelled" {
+                if msg == "Cancelled" || cancel.is_cancelled() {
                     emitter.emit_error("Cancelled");
                 } else {
                     emitter.emit_error(&msg);
@@ -331,7 +358,41 @@ pub async fn solve(
                 elapsed_ms: step_start.elapsed().as_millis() as u64,
                 is_final: true,
             });
-            emitter.emit_complete(&turn.text);
+            let candidate = turn.text.clone();
+            emitter.emit_trace("[review] independently auditing the final answer");
+            let critique_messages = vec![
+                Message::System {
+                    content: "You are a skeptical senior reviewer. Never invent facts, citations, or completed work.".into(),
+                },
+                Message::User {
+                    content: format!(
+                        "Audit this answer for objective coverage, factual support, provenance, uncertainty, contradictions, and unverified artifact claims. Missing evidence is not evidence. Give concise, concrete corrections.\n\nObjective:\n{objective}\n\nExecution audit: tool_calls={tool_calls_total}, tool_errors={tool_errors_total}\n\nCandidate:\n{}",
+                        candidate.chars().take(24_000).collect::<String>()
+                    ),
+                },
+            ];
+            let final_text = match model.chat(&critique_messages, &[]).await {
+                Ok(critique) if !critique.text.trim().is_empty() => {
+                    let revision_messages = vec![
+                        Message::System {
+                            content: "You are the final editor for a high-rigor investigation agent.".into(),
+                        },
+                        Message::User {
+                            content: format!(
+                                "Revise the candidate using the audit. Return only the polished answer. Preserve supported facts, remove unsupported claims, state limitations, and add no new facts.\n\nObjective:\n{objective}\n\nCandidate:\n{}\n\nAudit:\n{}",
+                                candidate.chars().take(24_000).collect::<String>(),
+                                critique.text
+                            ),
+                        },
+                    ];
+                    match model.chat(&revision_messages, &[]).await {
+                        Ok(revision) if !revision.text.trim().is_empty() => revision.text,
+                        _ => candidate,
+                    }
+                }
+                _ => candidate,
+            };
+            emitter.emit_complete(&final_text);
             tools.cleanup();
             // Wait for in-flight curators before exiting
             finish_curators(&mut curator_handles, &mut curator_rx, &mut messages, emitter).await;
@@ -349,6 +410,10 @@ pub async fn solve(
 
             emitter.emit_trace(&format!("Executing tool: {} ({})", tc.name, tc.id));
             let result = tools.execute(&tc.name, &tc.arguments).await;
+            tool_calls_total += 1;
+            if result.is_error {
+                tool_errors_total += 1;
+            }
 
             if result.is_error {
                 emitter.emit_trace(&format!("Tool {} error: {}", tc.name, &result.content[..result.content.len().min(200)]));

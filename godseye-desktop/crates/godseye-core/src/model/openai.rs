@@ -120,6 +120,11 @@ impl OpenAIModel {
 
         if !self.is_reasoning_model() {
             payload["temperature"] = serde_json::json!(0.0);
+            if self.provider == "deepseek" {
+                payload["max_tokens"] = serde_json::json!(32768);
+            }
+        } else if self.provider == "deepseek" {
+            payload["max_completion_tokens"] = serde_json::json!(32768);
         }
 
         if let Some(ref effort) = self.reasoning_effort {
@@ -417,6 +422,7 @@ mod tests {
         assert_eq!(payload["temperature"], 0.0);
         assert_eq!(payload["stream"], true);
         assert!(payload.get("stream_options").is_some());
+        assert!(payload.get("max_tokens").is_none());
     }
 
     #[test]
@@ -428,6 +434,18 @@ mod tests {
         let payload = model.build_payload(&msgs, &[], true);
         assert!(payload.get("temperature").is_none());
         assert_eq!(payload["reasoning_effort"], "high");
+        assert!(payload.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn test_deepseek_payload_uses_large_output_budget() {
+        let mut model = make_model("deepseek-v4-pro", Some("high"));
+        model.provider = "deepseek".to_string();
+        let msgs = vec![Message::User {
+            content: "Investigate".to_string(),
+        }];
+        let payload = model.build_payload(&msgs, &[], true);
+        assert_eq!(payload["max_tokens"], 32768);
     }
 
     #[test]

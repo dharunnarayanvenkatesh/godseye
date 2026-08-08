@@ -9,7 +9,7 @@ PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-opus-4-6",
     "openrouter": "anthropic/claude-sonnet-4-5",
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
-    "deepseek": "deepseek-chat",
+    "deepseek": "deepseek-v4-pro",
     "ollama": "llama3.2",
 }
 
@@ -36,23 +36,27 @@ class AgentConfig:
     deepseek_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
-    max_depth: int = 4
-    max_steps_per_call: int = 100
-    max_observation_chars: int = 6000
+    max_depth: int = 6
+    max_steps_per_call: int = 160
+    max_observation_chars: int = 12_000
+    max_output_tokens: int = 32_768
+    model_retry_attempts: int = 3
     command_timeout_sec: int = 45
     shell: str = "/bin/sh"
     max_files_listed: int = 400
-    max_file_chars: int = 20000
+    max_file_chars: int = 40_000
     max_search_hits: int = 200
-    max_shell_output_chars: int = 16000
+    max_shell_output_chars: int = 32_000
     session_root_dir: str = ".godseye"
-    max_persisted_observations: int = 400
+    max_persisted_observations: int = 800
     max_solve_seconds: int = 0
     recursive: bool = True
     min_subtask_depth: int = 0
     acceptance_criteria: bool = True
-    max_plan_chars: int = 40_000
-    max_turn_summaries: int = 50
+    max_plan_chars: int = 80_000
+    max_turn_summaries: int = 100
+    final_review: bool = True
+    final_review_max_chars: int = 24_000
     demo: bool = False
 
     @classmethod
@@ -93,22 +97,26 @@ class AgentConfig:
             deepseek_api_key=deepseek_api_key,
             exa_api_key=exa_api_key,
             voyage_api_key=voyage_api_key,
-            max_depth=int(os.getenv("GODSEYE_MAX_DEPTH", "4")),
-            max_steps_per_call=int(os.getenv("GODSEYE_MAX_STEPS", "100")),
-            max_observation_chars=int(os.getenv("GODSEYE_MAX_OBS_CHARS", "6000")),
+            max_depth=int(os.getenv("GODSEYE_MAX_DEPTH", "6")),
+            max_steps_per_call=int(os.getenv("GODSEYE_MAX_STEPS", "160")),
+            max_observation_chars=int(os.getenv("GODSEYE_MAX_OBS_CHARS", "12000")),
+            max_output_tokens=int(os.getenv("GODSEYE_MAX_OUTPUT_TOKENS", "32768")),
+            model_retry_attempts=int(os.getenv("GODSEYE_MODEL_RETRIES", "3")),
             command_timeout_sec=int(os.getenv("GODSEYE_CMD_TIMEOUT", "45")),
             shell=os.getenv("GODSEYE_SHELL", "/bin/sh"),
             max_files_listed=int(os.getenv("GODSEYE_MAX_FILES", "400")),
-            max_file_chars=int(os.getenv("GODSEYE_MAX_FILE_CHARS", "20000")),
+            max_file_chars=int(os.getenv("GODSEYE_MAX_FILE_CHARS", "40000")),
             max_search_hits=int(os.getenv("GODSEYE_MAX_SEARCH_HITS", "200")),
-            max_shell_output_chars=int(os.getenv("GODSEYE_MAX_SHELL_CHARS", "16000")),
+            max_shell_output_chars=int(os.getenv("GODSEYE_MAX_SHELL_CHARS", "32000")),
             session_root_dir=os.getenv("GODSEYE_SESSION_DIR", ".godseye"),
-            max_persisted_observations=int(os.getenv("GODSEYE_MAX_PERSISTED_OBS", "400")),
+            max_persisted_observations=int(os.getenv("GODSEYE_MAX_PERSISTED_OBS", "800")),
             max_solve_seconds=int(os.getenv("GODSEYE_MAX_SOLVE_SECONDS", "0")),
             recursive=os.getenv("GODSEYE_RECURSIVE", "true").strip().lower() in ("1", "true", "yes"),
             min_subtask_depth=int(os.getenv("GODSEYE_MIN_SUBTASK_DEPTH", "0")),
             acceptance_criteria=os.getenv("GODSEYE_ACCEPTANCE_CRITERIA", "true").strip().lower() in ("1", "true", "yes"),
-            max_plan_chars=int(os.getenv("GODSEYE_MAX_PLAN_CHARS", "40000")),
-            max_turn_summaries=int(os.getenv("GODSEYE_MAX_TURN_SUMMARIES", "50")),
+            max_plan_chars=int(os.getenv("GODSEYE_MAX_PLAN_CHARS", "80000")),
+            max_turn_summaries=int(os.getenv("GODSEYE_MAX_TURN_SUMMARIES", "100")),
+            final_review=os.getenv("GODSEYE_FINAL_REVIEW", "true").strip().lower() in ("1", "true", "yes"),
+            final_review_max_chars=int(os.getenv("GODSEYE_FINAL_REVIEW_MAX_CHARS", "24000")),
             demo=os.getenv("GODSEYE_DEMO", "").strip().lower() in ("1", "true", "yes"),
         )

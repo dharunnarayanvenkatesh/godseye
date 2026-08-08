@@ -37,6 +37,7 @@ describe("inferProvider", () => {
   it("deepseek hosted models return deepseek", () => {
     expect(inferProvider("deepseek-chat")).toBe("deepseek");
     expect(inferProvider("deepseek-reasoner")).toBe("deepseek");
+    expect(inferProvider("deepseek-v4-pro")).toBe("deepseek");
   });
 
   it("qwen without 3 returns ollama", () => {
@@ -65,7 +66,7 @@ describe("MODEL_ALIASES", () => {
   });
 
   it("deepseek alias", () => {
-    expect(MODEL_ALIASES["deepseek"]).toBe("deepseek-chat");
+    expect(MODEL_ALIASES["deepseek"]).toBe("deepseek-v4-pro");
   });
 });
 

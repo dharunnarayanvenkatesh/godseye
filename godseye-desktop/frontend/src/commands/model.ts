@@ -21,7 +21,9 @@ export const MODEL_ALIASES: Record<string, string> = {
   mistral: "mistral",
   gemma: "gemma",
   phi: "phi",
-  deepseek: "deepseek-chat",
+  deepseek: "deepseek-v4-pro",
+  "deepseek-pro": "deepseek-v4-pro",
+  "deepseek-flash": "deepseek-v4-flash",
   qwen: "qwen-3-235b-a22b-instruct-2507",
   "qwen-3": "qwen-3-235b-a22b-instruct-2507",
 };
@@ -31,7 +33,7 @@ export function inferProvider(model: string): string | null {
   if (model.includes("/")) return "openrouter";
   if (/^claude/i.test(model)) return "anthropic";
   if (/^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)/i.test(model)) return "cerebras";
-  if (/^deepseek-(chat|reasoner)/i.test(model)) return "deepseek";
+  if (/^deepseek-(v4-(flash|pro)|chat|reasoner)/i.test(model)) return "deepseek";
   if (/^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)/i.test(model)) return "openai";
   if (/^(llama|mistral|gemma|phi|codellama|deepseek|vicuna|tinyllama|neural-chat|dolphin|wizardlm|orca|nous-hermes|command-r|qwen)/i.test(model)) return "ollama";
   return null;

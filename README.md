@@ -85,7 +85,7 @@ The container mounts `./workspace` as the agent's working directory.
 | Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
-| DeepSeek | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| DeepSeek | `deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
 | Ollama | `llama3.2` | (none — local) |
 
 ### Local Models (Ollama)
@@ -103,8 +103,8 @@ The base URL defaults to `http://localhost:11434/v1` and can be overridden with 
 Run with DeepSeek:
 
 ```bash
-godseye-agent --provider deepseek --model deepseek-chat
-godseye-agent --provider deepseek --model deepseek-reasoner
+godseye-agent --provider deepseek --model deepseek-v4-pro
+godseye-agent --provider deepseek --model deepseek-v4-flash
 ```
 
 Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).

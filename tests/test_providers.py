@@ -29,12 +29,13 @@ class ProviderRegistryTests(unittest.TestCase):
     def test_registry_builds_native_and_compatible_models(self) -> None:
         config = _config()
         anthropic = get_provider("anthropic").build_model(config, "claude-opus-4-6")
-        deepseek = get_provider("deepseek").build_model(config, "deepseek-chat")
+        deepseek = get_provider("deepseek").build_model(config, "deepseek-v4-pro")
         ollama = get_provider("ollama").build_model(config, "llama3.2")
 
         self.assertIsInstance(anthropic, AnthropicModel)
         self.assertIsInstance(deepseek, OpenAICompatibleModel)
         self.assertFalse(deepseek.strict_tools)
+        self.assertEqual(deepseek.max_output_tokens, 32768)
         self.assertEqual(ollama.api_key, "ollama")
         self.assertEqual(ollama.first_byte_timeout, 120)
 
@@ -48,7 +49,7 @@ class ProviderRegistryTests(unittest.TestCase):
     def test_missing_key_fails_at_provider_boundary(self) -> None:
         config = AgentConfig(workspace=Path(tempfile.gettempdir()))
         with self.assertRaises(ModelError):
-            get_provider("deepseek").build_model(config, "deepseek-chat")
+            get_provider("deepseek").build_model(config, "deepseek-v4-pro")
 
     def test_unknown_provider_is_rejected(self) -> None:
         with self.assertRaises(ModelError):
@@ -56,5 +57,5 @@ class ProviderRegistryTests(unittest.TestCase):
 
     def test_inference_uses_registry_order(self) -> None:
         self.assertEqual(infer_provider_for_model("qwen-3-large"), "cerebras")
-        self.assertEqual(infer_provider_for_model("deepseek-chat"), "deepseek")
+        self.assertEqual(infer_provider_for_model("deepseek-v4-pro"), "deepseek")
         self.assertEqual(infer_provider_for_model("deepseek-v2"), "ollama")

@@ -164,8 +164,8 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.provider, "auto")
         self.assertEqual(cfg.model, "claude-opus-4-6")
         self.assertEqual(cfg.reasoning_effort, "high")
-        self.assertEqual(cfg.max_depth, 4)
-        self.assertEqual(cfg.max_steps_per_call, 100)
+        self.assertEqual(cfg.max_depth, 6)
+        self.assertEqual(cfg.max_steps_per_call, 160)
         self.assertEqual(cfg.shell, "/bin/sh")
 
     def test_custom_env_overrides(self) -> None:

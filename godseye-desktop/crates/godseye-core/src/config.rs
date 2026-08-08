@@ -13,7 +13,7 @@ pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>
             ("anthropic", "claude-opus-4-6"),
             ("openrouter", "anthropic/claude-sonnet-4-5"),
             ("cerebras", "qwen-3-235b-a22b-instruct-2507"),
-            ("deepseek", "deepseek-chat"),
+            ("deepseek", "deepseek-v4-pro"),
             ("ollama", "llama3.2"),
         ])
     });
@@ -114,23 +114,23 @@ impl Default for AgentConfig {
             deepseek_api_key: None,
             exa_api_key: None,
             voyage_api_key: None,
-            max_depth: 4,
-            max_steps_per_call: 100,
-            max_observation_chars: 6000,
+            max_depth: 6,
+            max_steps_per_call: 160,
+            max_observation_chars: 12_000,
             command_timeout_sec: 45,
             shell: "/bin/sh".into(),
             max_files_listed: 400,
-            max_file_chars: 20000,
+            max_file_chars: 40_000,
             max_search_hits: 200,
-            max_shell_output_chars: 16000,
+            max_shell_output_chars: 32_000,
             session_root_dir: ".godseye".into(),
-            max_persisted_observations: 400,
+            max_persisted_observations: 800,
             max_solve_seconds: 0,
             recursive: true,
             min_subtask_depth: 0,
             acceptance_criteria: true,
-            max_plan_chars: 40_000,
-            max_turn_summaries: 50,
+            max_plan_chars: 80_000,
+            max_turn_summaries: 100,
             demo: false,
         }
     }
@@ -220,23 +220,23 @@ impl AgentConfig {
             deepseek_api_key,
             exa_api_key,
             voyage_api_key,
-            max_depth: env_int("GODSEYE_MAX_DEPTH", 4),
-            max_steps_per_call: env_int("GODSEYE_MAX_STEPS", 100),
-            max_observation_chars: env_int("GODSEYE_MAX_OBS_CHARS", 6000),
+            max_depth: env_int("GODSEYE_MAX_DEPTH", 6),
+            max_steps_per_call: env_int("GODSEYE_MAX_STEPS", 160),
+            max_observation_chars: env_int("GODSEYE_MAX_OBS_CHARS", 12_000),
             command_timeout_sec: env_int("GODSEYE_CMD_TIMEOUT", 45),
             shell: env_or("GODSEYE_SHELL", "/bin/sh"),
             max_files_listed: env_int("GODSEYE_MAX_FILES", 400),
-            max_file_chars: env_int("GODSEYE_MAX_FILE_CHARS", 20000),
+            max_file_chars: env_int("GODSEYE_MAX_FILE_CHARS", 40_000),
             max_search_hits: env_int("GODSEYE_MAX_SEARCH_HITS", 200),
-            max_shell_output_chars: env_int("GODSEYE_MAX_SHELL_CHARS", 16000),
+            max_shell_output_chars: env_int("GODSEYE_MAX_SHELL_CHARS", 32_000),
             session_root_dir: env_or("GODSEYE_SESSION_DIR", ".godseye"),
-            max_persisted_observations: env_int("GODSEYE_MAX_PERSISTED_OBS", 400),
+            max_persisted_observations: env_int("GODSEYE_MAX_PERSISTED_OBS", 800),
             max_solve_seconds: env_int("GODSEYE_MAX_SOLVE_SECONDS", 0),
             recursive: env_bool("GODSEYE_RECURSIVE", true),
             min_subtask_depth: env_int("GODSEYE_MIN_SUBTASK_DEPTH", 0),
             acceptance_criteria: env_bool("GODSEYE_ACCEPTANCE_CRITERIA", true),
-            max_plan_chars: env_int("GODSEYE_MAX_PLAN_CHARS", 40_000),
-            max_turn_summaries: env_int("GODSEYE_MAX_TURN_SUMMARIES", 50),
+            max_plan_chars: env_int("GODSEYE_MAX_PLAN_CHARS", 80_000),
+            max_turn_summaries: env_int("GODSEYE_MAX_TURN_SUMMARIES", 100),
             demo: env_bool("GODSEYE_DEMO", false),
         }
     }
@@ -274,8 +274,8 @@ mod tests {
         assert_eq!(cfg.provider, "auto");
         assert_eq!(cfg.model, "claude-opus-4-6");
         assert_eq!(cfg.reasoning_effort, Some("high".into()));
-        assert_eq!(cfg.max_depth, 4);
-        assert_eq!(cfg.max_steps_per_call, 100);
+        assert_eq!(cfg.max_depth, 6);
+        assert_eq!(cfg.max_steps_per_call, 160);
         assert!(cfg.recursive);
         assert!(cfg.acceptance_criteria);
         assert!(!cfg.demo);
@@ -296,7 +296,7 @@ mod tests {
             PROVIDER_DEFAULT_MODELS.get("cerebras"),
             Some(&"qwen-3-235b-a22b-instruct-2507")
         );
-        assert_eq!(PROVIDER_DEFAULT_MODELS.get("deepseek"), Some(&"deepseek-chat"));
+        assert_eq!(PROVIDER_DEFAULT_MODELS.get("deepseek"), Some(&"deepseek-v4-pro"));
         assert_eq!(PROVIDER_DEFAULT_MODELS.get("ollama"), Some(&"llama3.2"));
     }
 
@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(cfg.provider, "auto");
         assert_eq!(cfg.model, "claude-opus-4-6");
         assert_eq!(cfg.reasoning_effort, Some("high".into()));
-        assert_eq!(cfg.max_depth, 4);
+        assert_eq!(cfg.max_depth, 6);
         assert!(cfg.recursive);
         assert!(!cfg.demo);
         assert!(cfg.openai_api_key.is_none());

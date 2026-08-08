@@ -16,7 +16,8 @@ from agent.config import PROVIDER_DEFAULT_MODELS
 
 class CredentialTests(unittest.TestCase):
     def test_deepseek_provider_defaults_and_inference(self) -> None:
-        self.assertEqual(PROVIDER_DEFAULT_MODELS["deepseek"], "deepseek-chat")
+        self.assertEqual(PROVIDER_DEFAULT_MODELS["deepseek"], "deepseek-v4-pro")
+        self.assertEqual(infer_provider_for_model("deepseek-v4-pro"), "deepseek")
         self.assertEqual(infer_provider_for_model("deepseek-chat"), "deepseek")
         self.assertEqual(infer_provider_for_model("deepseek-reasoner"), "deepseek")
 

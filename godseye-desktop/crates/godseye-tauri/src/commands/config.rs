@@ -85,8 +85,8 @@ fn known_models_for_provider(provider: &str) -> Vec<ModelInfo> {
             ("llama-4-scout-17b-16e-instruct", "Llama-4 Scout"),
         ],
         "deepseek" => vec![
-            ("deepseek-chat", "DeepSeek Chat"),
-            ("deepseek-reasoner", "DeepSeek Reasoner"),
+            ("deepseek-v4-pro", "DeepSeek V4 Pro"),
+            ("deepseek-v4-flash", "DeepSeek V4 Flash"),
         ],
         "ollama" => vec![
             ("llama3.2", "Llama 3.2"),

@@ -40,7 +40,7 @@ class SettingsTests(unittest.TestCase):
                 default_model_openai="gpt-4.1-mini",
                 default_model_anthropic="claude-opus-4-6",
                 default_model_openrouter="anthropic/claude-sonnet-4-5",
-                default_model_deepseek="deepseek-chat",
+                default_model_deepseek="deepseek-v4-pro",
             )
             store.save(settings)
             loaded = store.load()
@@ -48,7 +48,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(loaded.default_model_openai, "gpt-4.1-mini")
             self.assertEqual(loaded.default_model_anthropic, "claude-opus-4-6")
             self.assertEqual(loaded.default_model_openrouter, "anthropic/claude-sonnet-4-5")
-            self.assertEqual(loaded.default_model_deepseek, "deepseek-chat")
+            self.assertEqual(loaded.default_model_deepseek, "deepseek-v4-pro")
 
     def test_default_model_for_provider_specific(self) -> None:
         settings = PersistentSettings(
@@ -180,6 +180,8 @@ class InferProviderTests(unittest.TestCase):
         self.assertEqual(infer_provider_for_model("llama-4-scout-cerebras"), "cerebras")
 
     def test_deepseek_models(self) -> None:
+        self.assertEqual(infer_provider_for_model("deepseek-v4-pro"), "deepseek")
+        self.assertEqual(infer_provider_for_model("deepseek-v4-flash"), "deepseek")
         self.assertEqual(infer_provider_for_model("deepseek-chat"), "deepseek")
         self.assertEqual(infer_provider_for_model("deepseek-reasoner"), "deepseek")
 

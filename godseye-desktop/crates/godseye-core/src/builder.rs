@@ -30,7 +30,7 @@ static CEREBRAS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)").unwrap());
 
 static DEEPSEEK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^deepseek-(chat|reasoner)").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)^deepseek-(v4-(flash|pro)|chat|reasoner)").unwrap());
 
 // Ollama regex: `qwen` without lookahead — Cerebras check runs first, so
 // `qwen-3*` is already caught before we reach this regex.
@@ -304,6 +304,8 @@ mod tests {
 
     #[test]
     fn test_infer_deepseek() {
+        assert_eq!(infer_provider_for_model("deepseek-v4-pro"), Some("deepseek"));
+        assert_eq!(infer_provider_for_model("deepseek-v4-flash"), Some("deepseek"));
         assert_eq!(infer_provider_for_model("deepseek-chat"), Some("deepseek"));
         assert_eq!(infer_provider_for_model("deepseek-reasoner"), Some("deepseek"));
     }
@@ -525,12 +527,12 @@ mod tests {
     fn test_build_model_deepseek() {
         let cfg = AgentConfig {
             provider: "deepseek".into(),
-            model: "deepseek-chat".into(),
+            model: "deepseek-v4-pro".into(),
             deepseek_api_key: Some("sk-key".into()),
             ..Default::default()
         };
         let model = build_model(&cfg).unwrap();
-        assert_eq!(model.model_name(), "deepseek-chat");
+        assert_eq!(model.model_name(), "deepseek-v4-pro");
         assert_eq!(model.provider_name(), "deepseek");
     }
 

@@ -60,6 +60,8 @@ _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-4o": 128_000,
     "gpt-4.1": 1_000_000,
     "gpt-5-turbo-16k": 16_000,
+    "deepseek-v4-pro": 1_000_000,
+    "deepseek-v4-flash": 1_000_000,
 }
 _DEFAULT_CONTEXT_WINDOW = 128_000
 _CONDENSATION_THRESHOLD = 0.75
@@ -153,6 +155,39 @@ class TurnSummary:
 
 
 @dataclass
+class SolveAudit:
+    """Small evidence trail used by the independent final-answer reviewer."""
+
+    tool_calls: int = 0
+    tool_errors: int = 0
+    verification_calls: int = 0
+    write_calls: int = 0
+    source_calls: int = 0
+
+    def record(self, result: ToolResult) -> None:
+        self.tool_calls += 1
+        self.tool_errors += int(result.is_error)
+        if result.name in {"read_file", "search_files", "run_shell", "fetch_url", "source_details"}:
+            self.verification_calls += 1
+        if result.name in {"write_file", "apply_patch", "edit_file", "hashline_edit"}:
+            self.write_calls += 1
+        if result.name in {"web_search", "fetch_url", "search_sources", "source_details"}:
+            self.source_calls += 1
+
+    def summary(self) -> str:
+        return json.dumps(
+            {
+                "tool_calls": self.tool_calls,
+                "tool_errors": self.tool_errors,
+                "verification_calls": self.verification_calls,
+                "write_calls": self.write_calls,
+                "source_calls": self.source_calls,
+            },
+            sort_keys=True,
+        )
+
+
+@dataclass
 class RLMEngine:
     model: BaseModel
     tools: WorkspaceTools
@@ -236,6 +271,105 @@ class RLMEngine:
             f"\n...[truncated {len(text) - self.config.max_observation_chars} chars]..."
         )
 
+    def _record_tokens(self, model: BaseModel, turn: ModelTurn) -> None:
+        if not (turn.input_tokens or turn.output_tokens):
+            return
+        model_name = getattr(model, "model", "(unknown)")
+        with self._lock:
+            bucket = self.session_tokens.setdefault(model_name, {"input": 0, "output": 0})
+            bucket["input"] += turn.input_tokens
+            bucket["output"] += turn.output_tokens
+
+    def _complete_with_retry(
+        self,
+        model: BaseModel,
+        conversation: Any,
+        *,
+        depth: int,
+        step: int,
+        deadline: float,
+        on_event: EventCallback | None,
+    ) -> ModelTurn:
+        attempts = max(1, self.config.model_retry_attempts)
+        for attempt in range(1, attempts + 1):
+            try:
+                return model.complete(conversation)
+            except ModelError as exc:
+                if attempt >= attempts or self._cancel.is_set():
+                    raise
+                if deadline and time.monotonic() >= deadline:
+                    raise
+                delay = min(4.0, 0.5 * (2 ** (attempt - 1)))
+                self._emit(
+                    f"[d{depth}/s{step}] model call failed ({attempt}/{attempts}): {exc}; "
+                    f"retrying in {delay:.1f}s",
+                    on_event,
+                )
+                time.sleep(delay)
+        raise ModelError("Model retry loop ended unexpectedly.")
+
+    def _review_final_answer(
+        self,
+        objective: str,
+        candidate: str,
+        audit: SolveAudit,
+        context: ExternalContext,
+        on_event: EventCallback | None,
+    ) -> str:
+        """Critique and revise a top-level answer with an isolated model context."""
+        if not self.config.final_review or not self.model_factory:
+            return candidate
+
+        model_name = getattr(self.model, "model", "")
+        effort = getattr(self.model, "reasoning_effort", None) or "high"
+        try:
+            reviewer = self.model_factory(model_name, effort)
+            if hasattr(reviewer, "tool_defs"):
+                reviewer.tool_defs = []
+
+            limit = max(1000, self.config.final_review_max_chars)
+            bounded_candidate = candidate[:limit]
+            evidence_context = context.summary(max_items=16, max_chars=min(12_000, limit))
+            critique_prompt = (
+                "Independently audit the candidate answer. Check objective coverage, factual support, "
+                "source provenance, uncertainty labels, contradictions, and whether claimed artifacts or "
+                "verification are actually evidenced. Do not assume missing evidence exists. Identify only "
+                "material issues and give concrete corrections.\n\n"
+                f"Objective:\n{objective}\n\nExecution audit:\n{audit.summary()}\n\n"
+                f"Available external evidence:\n{evidence_context}\n\nCandidate answer:\n{bounded_candidate}"
+            )
+            self._emit("[review] independently auditing the final answer...", on_event)
+            critique_conversation = reviewer.create_conversation(
+                "You are a skeptical senior reviewer. Never invent facts, citations, or completed work.",
+                critique_prompt,
+            )
+            critique_turn = reviewer.complete(critique_conversation)
+            self._record_tokens(reviewer, critique_turn)
+            critique = (critique_turn.text or "").strip()
+            if not critique:
+                return candidate
+
+            revision_prompt = (
+                "Revise the candidate using the audit below. Return only the polished final answer. "
+                "Preserve supported facts and useful citations, remove unsupported claims, clearly state "
+                "limitations, and do not add facts that are absent from the candidate or evidence.\n\n"
+                f"Objective:\n{objective}\n\nCandidate:\n{bounded_candidate}\n\nAudit:\n{critique}\n\n"
+                f"Evidence context:\n{evidence_context}"
+            )
+            revision_conversation = reviewer.create_conversation(
+                "You are the final answer editor for a high-rigor investigation agent.",
+                revision_prompt,
+            )
+            revision_turn = reviewer.complete(revision_conversation)
+            self._record_tokens(reviewer, revision_turn)
+            revised = (revision_turn.text or "").strip()
+            if revised:
+                self._emit("[review] final answer passed through critique and revision", on_event)
+                return revised
+        except Exception as exc:
+            self._emit(f"[review] unavailable; returning verified candidate: {exc}", on_event)
+        return candidate
+
     def _runtime_policy_check(self, name: str, args: dict[str, Any], depth: int) -> str | None:
         if name != "run_shell":
             return None
@@ -262,7 +396,7 @@ class RLMEngine:
     ) -> str:
         """Evaluate a subtask/execute result against acceptance criteria using a cheap judge model."""
         if not self.model_factory:
-            return "PASS\n(no judge available)"
+            return "FAIL: acceptance judge unavailable"
 
         cur = current_model or self.model
         cur_name = getattr(cur, "model", "")
@@ -273,8 +407,8 @@ class RLMEngine:
             if cache_key not in self._model_cache:
                 try:
                     self._model_cache[cache_key] = self.model_factory(judge_name, judge_effort)
-                except Exception:
-                    return "PASS\n(no judge available)"
+                except Exception as exc:
+                    return f"FAIL: acceptance judge unavailable ({exc})"
             judge_model = self._model_cache[cache_key]
         if hasattr(judge_model, "tool_defs"):
             judge_model.tool_defs = []
@@ -285,18 +419,23 @@ class RLMEngine:
             f"Objective: {objective}\n\n"
             f"Acceptance criteria: {acceptance_criteria}\n\n"
             f"Result:\n{truncated}\n\n"
-            "Respond with exactly one line starting with PASS: or FAIL: followed by a brief explanation."
+            "Evaluate every criterion using only evidence present in the result. Missing or ambiguous "
+            "evidence is a failure. Respond with exactly one line starting with PASS: or FAIL: followed "
+            "by a brief criterion-specific explanation."
         )
 
         try:
             conversation = judge_model.create_conversation("You are a concise evaluator.", prompt)
             turn = judge_model.complete(conversation)
+            self._record_tokens(judge_model, turn)
             verdict = (turn.text or "").strip()
             if not verdict:
-                return "PASS\n(judge returned empty response)"
+                return "FAIL: acceptance judge returned an empty response"
+            if not re.match(r"^(PASS|FAIL):", verdict, flags=re.IGNORECASE):
+                return f"FAIL: malformed judge verdict ({verdict[:200]})"
             return verdict
         except Exception as exc:
-            return f"PASS\n(judge error: {exc})"
+            return f"FAIL: acceptance judge error ({exc})"
 
     def _solve_recursive(
         self,
@@ -312,6 +451,7 @@ class RLMEngine:
         turn_history: list[TurnSummary] | None = None,
     ) -> str:
         model = model_override or self.model
+        audit = SolveAudit()
 
         self._emit(f"[depth {depth}] objective: {objective}", on_event)
 
@@ -323,6 +463,9 @@ class RLMEngine:
                 "max_steps_per_call": self.config.max_steps_per_call,
                 "workspace": str(self.config.workspace),
                 "external_context_summary": context.summary(),
+                "quality_profile": "high-rigor",
+                "model_retry_attempts": self.config.model_retry_attempts,
+                "independent_final_review": self.config.final_review and self.model_factory is not None,
             }
         else:
             if depth == 0:
@@ -338,6 +481,9 @@ class RLMEngine:
                 "workspace": str(self.config.workspace),
                 "external_context_summary": context.summary(),
                 "repl_hint": repl_hint,
+                "quality_profile": "high-rigor",
+                "model_retry_attempts": self.config.model_retry_attempts,
+                "independent_final_review": self.config.final_review and self.model_factory is not None,
             }
         if self.session_dir is not None:
             initial_msg_dict["session_dir"] = str(self.session_dir)
@@ -377,7 +523,14 @@ class RLMEngine:
             if on_content_delta and depth == 0 and hasattr(model, "on_content_delta"):
                 model.on_content_delta = on_content_delta
             try:
-                turn = model.complete(conversation)
+                turn = self._complete_with_retry(
+                    model,
+                    conversation,
+                    depth=depth,
+                    step=step,
+                    deadline=deadline,
+                    on_event=on_event,
+                )
             except ModelError as exc:
                 self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
                 return f"Model error at depth {depth}, step {step}: {exc}"
@@ -401,12 +554,7 @@ class RLMEngine:
                     pass
 
             # Accumulate token usage per model
-            if turn.input_tokens or turn.output_tokens:
-                model_name = getattr(model, "model", "(unknown)")
-                with self._lock:
-                    bucket = self.session_tokens.setdefault(model_name, {"input": 0, "output": 0})
-                    bucket["input"] += turn.input_tokens
-                    bucket["output"] += turn.output_tokens
+            self._record_tokens(model, turn)
 
             model.append_assistant_turn(conversation, turn)
 
@@ -460,7 +608,7 @@ class RLMEngine:
                         )
                     except Exception:
                         pass
-                return turn.text
+                return self._review_final_answer(objective, turn.text, audit, context, on_event) if depth == 0 else turn.text
 
             # No tool calls and no text = unexpected empty response
             if not turn.tool_calls:
@@ -541,6 +689,7 @@ class RLMEngine:
             for i in sorted(indexed_results):
                 r, is_final_entry = indexed_results[i]
                 results.append(r)
+                audit.record(r)
                 if is_final_entry and final_answer is None:
                     final_answer = r.content
 
@@ -615,7 +764,10 @@ class RLMEngine:
 
             if final_answer is not None:
                 self._emit(f"[d{depth}] completed in {step} step(s)", on_event)
-                return final_answer
+                return (
+                    self._review_final_answer(objective, final_answer, audit, context, on_event)
+                    if depth == 0 else final_answer
+                )
 
             for r in results:
                 context.add(f"[depth {depth} step {step}]\n{r.content}")
