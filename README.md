@@ -4,14 +4,6 @@ Architecture and extension points are documented in [ARCHITECTURE.md](ARCHITECTU
 
 A recursive-language-model investigation agent with a desktop GUI and terminal interface. God's Eye ingests heterogeneous datasets — corporate registries, campaign finance records, lobbying disclosures, government contracts, and more — resolves entities across them, and surfaces non-obvious connections through evidence-backed analysis. It operates autonomously with file I/O, shell execution, web search, and recursive sub-agent delegation.
 
-## Download
-
-Source and releases live at [dharunnarayanvenkatesh/god-s-eye](https://github.com/dharunnarayanvenkatesh/god-s-eye):
-
-- **macOS** — `.dmg`
-- **Windows** — `.msi`
-- **Linux** — `.AppImage`
-
 ## Desktop App
 
 The desktop app (`godseye-desktop/`) is a Tauri 2 application with a three-pane layout:
